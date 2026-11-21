@@ -120,97 +120,116 @@ router.get("/:id", async (req, res) => {
 // ===============================
 
 
+
 router.post(
-  "/",authMiddleware,screenPermissionMiddleware("products"),upload.single("image"),async (req, res) => {
-  try {
-    const { name, price, quantity, maxQuantity, category, weight } = req.body;
-    const image = req.file ? `/uploads/${req.file.filename}` : req.body.image;
-      
-    const priceNumber = Number(price);
-    const quantityNumber = Number(quantity);
-    const maxQuantityNumber = Number(maxQuantity);
-   if (
-      !name ||
-      !price ||
-      quantity === undefined ||
-      maxQuantity === undefined ||
-      !category ||
-      !weight ||
-      !image
-    ) {
-      return res.status(400).json({
-        message: "All fields are required",
-      });
-    }
+  "/",
+  authMiddleware,
+  screenPermissionMiddleware("products"),
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      const {
+        name,
+        price,
+        quantity,
+        maxQuantity,
+        category,
+        weight,
+      } = req.body;
 
-    if (
-      Number.isNaN(priceNumber) ||
-      Number.isNaN(quantityNumber) ||
-      Number.isNaN(maxQuantityNumber)
-    ) {
+      const image = req.file
+        ? `/uploads/${req.file.filename}`
+        : req.body.image;
+
+      // Delete uploaded image if validation fails
+      const deleteUploadedImage = () => {
+        if (req.file && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+      };
+
+      // Check required fields
+      if (
+        !name ||
+        !price ||
+        quantity === undefined ||
+        maxQuantity === undefined ||
+        !category ||
+        !weight ||
+        !image
+      ) {
+        deleteUploadedImage();
+        return res.status(400).json({
+          message: "All fields are required",
+        });
+      }
+
+      // Convert values into numbers
+      const priceNumber = Number(price);
+      const quantityNumber = Number(quantity);
+      const maxQuantityNumber = Number(maxQuantity);
+
+      // Check number values
+      if (
+        Number.isNaN(priceNumber) ||
+        Number.isNaN(quantityNumber) ||
+        Number.isNaN(maxQuantityNumber)
+      ) {
+        deleteUploadedImage();
+        return res.status(400).json({
+          message: "Price, quantity and maxQuantity must be numbers",
+        });
+      }
+
+      // Check negative values and stock limit
+      if (
+        priceNumber < 0 ||
+        quantityNumber < 0 ||
+        maxQuantityNumber <= 0
+      ) {
+        deleteUploadedImage();
+        return res.status(400).json({
+          message: "Invalid price or quantity",
+        });
+      }
+
+      if (quantityNumber > maxQuantityNumber) {
+        deleteUploadedImage();
+        return res.status(400).json({
+          message: "Quantity cannot be greater than maximum stock limit",
+        });
+      }
+
+      // Save product
+      const fruit = await Fruit.create({
+        name,
+        price: priceNumber,
+        quantity: quantityNumber,
+        maxQuantity: maxQuantityNumber,
+        category,
+        weight,
+        image,
+      });
+
+      return res.status(201).json({
+        message: "Fruit added successfully",
+        fruit,
+      });
+    } catch (error) {
       if (req.file && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
       }
 
-      return res.status(400).json({
-        message: "Price, quantity and maxQuantity must be numbers",
+      return res.status(500).json({
+        message: "Unable to add fruit",
+        error: error.message,
       });
     }
-
-    if (
-      priceNumber < 0 ||
-      quantityNumber < 0 ||
-      maxQuantityNumber < 0
-    ) {
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-
-      return res.status(400).json({
-        message: "Price and stock values cannot be negative",
-      });
-    }
-
-
-    if (quantityNumber > maxQuantityNumber) {
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-
-      return res.status(400).json({
-        message:
-          "Quantity cannot be greater than maximum stock limit",
-      });
-    }
-
-    const fruit = await Fruit.create({
-      name,
-      price: priceNumber,
-      quantity: quantityNumber,
-      maxQuantity: maxQuantityNumber,
-      category,
-      weight,
-      image,
-    });
-
-    res.status(201).json({
-      message: "Fruit added successfully",
-      fruit,
-    });
-  } catch (error) {
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-
-    res.status(500).json({
-      message: "Unable to add fruit",
-      error: error.message,
-    // res.status(500).json({
-    //   message: "Unable to add fruit",
-    //   error: error.message,
-    });
   }
-});
+);
+
+
+
 
 // ===============================
 // UPDATE FRUIT
